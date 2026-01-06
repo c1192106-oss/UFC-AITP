@@ -1,76 +1,78 @@
 import streamlit as st
 import os
+import zipfile
+from io import BytesIO
 from markitdown import MarkItDown
 
-# 1. Configuration & Engine Initialization
-st.set_page_config(page_title="Universal Document Reader", page_icon="📄")
+# 1. Page Config & Setup
+st.set_page_config(page_title="Pro Doc Converter", page_icon="🚀", layout="wide")
 
 @st.cache_resource
 def get_converter():
     return MarkItDown()
 
 def format_size(bytes_size):
-    """Converts bytes to a human-readable MB format."""
     return round(bytes_size / (1024 * 1024), 2)
 
-def process_file(uploaded_file):
-    md = get_converter()
-    temp_path = f"temp_{uploaded_file.name}"
-    
-    try:
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        result = md.convert(temp_path)
-        return result.text_content
-    except Exception as e:
-        st.error(f"⚠️ Could not read {uploaded_file.name}. Please check the format.")
-        return None
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+def get_reading_time(text):
+    words = len(text.split())
+    minutes = round(words / 200) # Average reading speed
+    return 1 if minutes == 0 else minutes
 
-# 2. Interface (User Experience)
-st.title("📄 Universal Document Reader")
+# 2. Main Interface
+st.title("🚀 Pro Document Intelligence & Converter")
+st.markdown("---")
 
 uploaded_files = st.file_uploader(
-    "Drag and drop multiple files at once", 
+    "Upload multiple documents for instant conversion", 
     type=['docx', 'xlsx', 'pptx', 'pdf', 'html', 'zip'],
     accept_multiple_files=True
 )
 
+# Global list to store processed files for the Batch Zip feature
+all_converted_docs = []
+
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        with st.expander(f"👁️ {uploaded_file.name}", expanded=True):
-            content = process_file(uploaded_file)
+        with st.expander(f"📦 Processing: {uploaded_file.name}", expanded=True):
             
-            if content:
-                # Create Tabs
-                tab1, tab2 = st.tabs(["📄 Preview & Download", "📊 File Size Comparison"])
+            # Processing Logic
+            converter = get_converter()
+            temp_path = f"temp_{uploaded_file.name}"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            try:
+                result = converter.convert(temp_path)
+                content = result.text_content
+                all_converted_docs.append({"name": uploaded_file.name, "content": content})
                 
-                with tab1:
-                    st.text_area("Extracted Content", value=content, height=300, key=f"area_{uploaded_file.name}")
+                # Layout Columns
+                col_left, col_right = st.columns([2, 1])
+                
+                with col_left:
+                    tab1, tab2 = st.tabs(["📄 Markdown Preview", "📊 Analysis"])
+                    with tab1:
+                        st.text_area("Content", value=content, height=350, key=f"txt_{uploaded_file.name}")
+                    
+                    with tab2:
+                        # File Size Table
+                        original_size = uploaded_file.size
+                        converted_size = len(content.encode('utf-8'))
+                        reduction = 100 * (1 - (converted_size / original_size))
+                        
+                        st.table({
+                            "Metric": ["Original Size", "Converted Size", "Reduction"],
+                            "Value": [f"{format_size(original_size)} MB", f"{format_size(converted_size)} MB", f"{round(reduction, 1)}%"]
+                        })
+                        
+                with col_right:
+                    st.metric("Reading Time", f"{get_reading_time(content)} min")
+                    
                     file_root = os.path.splitext(uploaded_file.name)[0]
-                    
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.download_button("📥 Download .md", content, f"{file_root}.md", "text/markdown", key=f"md_{uploaded_file.name}")
-                    with c2:
-                        st.download_button("📄 Download .txt", content, f"{file_root}.txt", "text/plain", key=f"txt_{uploaded_file.name}")
+                    st.download_button("📥 Download .md", content, f"{file_root}.md", key=f"btn_md_{uploaded_file.name}")
+                    st.download_button("📄 Download .txt", content, f"{file_root}.txt", key=f"btn_txt_{uploaded_file.name}")
 
-                with tab2:
-                    # Calculations
-                    original_size = uploaded_file.size
-                    converted_size = len(content.encode('utf-8'))
-                    reduction = 100 * (1 - (converted_size / original_size))
-                    
-                    # Size Table
-                    st.table({
-                        "Version": ["Original File", "Converted Text"],
-                        "Size (MB)": [f"{format_size(original_size)} MB", f"{format_size(converted_size)} MB"]
-                    })
-                    
-                    st.success(f"✅ Text version is **{round(reduction, 1)}% smaller**.")
-
-st.divider()
-st.caption("Leave a comment in the section if you need help adding more file types!")
+            except Exception as e:
+                st.error(f"⚠️ Error: {uploaded_file.name} is corrupted or unsupported.")
+            finally:
