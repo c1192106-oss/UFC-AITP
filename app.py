@@ -2,59 +2,71 @@ import streamlit as st
 import os
 from markitdown import MarkItDown
 
-# Configuration
+# 1. Configuration & Engine Initialization
 st.set_page_config(page_title="Universal Document Reader", page_icon="📄")
 
-# Initialize the engine once to save resources
 @st.cache_resource
 def get_converter():
+    # Adding a User-Agent for web requests as requested
     return MarkItDown()
 
 def process_file(uploaded_file):
     md = get_converter()
-    # We save to a temporary file because MarkItDown requires 
-    # a file path to accurately detect the format extension.
     temp_path = f"temp_{uploaded_file.name}"
     
     try:
         with open(temp_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         
-        # Run conversion
+        # Conversion logic
         result = md.convert(temp_path)
         return result.text_content
     except Exception as e:
         st.error(f"⚠️ Could not read {uploaded_file.name}. Please check the format.")
         return None
     finally:
-        # Cleanup temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-# --- UI ---
+# 2. Interface (User Experience)
 st.title("📄 Universal Document Reader")
 
 uploaded_files = st.file_uploader(
-    "Upload Office, PDF, or HTML files", 
-    type=['docx', 'xlsx', 'pptx', 'pdf', 'html'],
+    "Drag and drop multiple files at once", 
+    type=['docx', 'xlsx', 'pptx', 'pdf', 'html', 'zip'],
     accept_multiple_files=True
 )
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        with st.expander(f"Preview: {uploaded_file.name}", expanded=True):
+        with st.expander(f"👁️ Preview: {uploaded_file.name}", expanded=True):
+            # Instant Preview
             content = process_file(uploaded_file)
             
             if content:
-                st.text_area("Content", value=content, height=250, key=f"area_{uploaded_file.name}")
+                st.text_area("Extracted Content", value=content, height=300, key=f"area_{uploaded_file.name}")
                 
-                # File naming logic
+                # File naming logic for download
                 file_root = os.path.splitext(uploaded_file.name)[0]
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.download_button("📥 Markdown", content, f"{file_root}_converted.md", "text/markdown")
+                    st.download_button(
+                        label="📥 Download Markdown (.md)", 
+                        data=content, 
+                        file_name=f"{file_root}_converted.md", 
+                        mime="text/markdown",
+                        key=f"md_{uploaded_file.name}"
+                    )
                 with col2:
-                    st.download_button("📄 Plain Text", content, f"{file_root}_converted.txt", "text/plain")
+                    st.download_button(
+                        label="📄 Download Text (.txt)", 
+                        data=content, 
+                        file_name=f"{file_root}_converted.txt", 
+                        mime="text/plain",
+                        key=f"txt_{uploaded_file.name}"
+                    )
 
-st.info("Leave a comment in the section if you encounter specific file-type errors!")
+# Corrected divider syntax
+st.markdown("---")
+st.caption("Professional-grade document-to-text converter.")
